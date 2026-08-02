@@ -13,3 +13,6 @@ logs/
 
 # Uploads
 uploads/
+firebase-base64.txt
+.env
+node_modules/
