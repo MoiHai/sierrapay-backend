@@ -1,0 +1,15 @@
+# Node dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Firebase Admin SDK private key
+serviceAccountKey.json
+
+# Logs
+logs/
+*.log
+
+# Uploads
+uploads/
