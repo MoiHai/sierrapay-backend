@@ -1,36 +1,94 @@
-const db = require('../config/database'); // This imports your new firebase setup
+const db = require("../config/database");
 
-// Instead of a Mongoose Schema, we define a helper class to interact with Firestore
-class User {
-  constructor() {
-    this.collection = db.collection('users');
-  }
 
-  // Example: Create a new user
-  async create(userData) {
-    const docRef = this.collection.doc(); // Auto-generate ID
-    await docRef.set({
-      ...userData,
-      createdAt: new Date().toISOString()
-    });
-    return { id: docRef.id, ...userData };
-  }
+const usersCollection = db.collection("users");
 
-  // Example: Find a user by email (used in login/auth)
-  async findByEmail(email) {
-    const snapshot = await this.collection.where('email', '==', email).get();
-    if (snapshot.empty) return null;
-    
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
-  }
 
-  // Example: Find a user by ID
-  async findById(id) {
-    const doc = await this.collection.doc(id).get();
-    if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() };
-  }
+const User = {
+
+
+async create(userData){
+
+const userRef = usersCollection.doc();
+
+
+const user = {
+
+id:userRef.id,
+
+phone:userData.phone,
+
+name:userData.name || "",
+
+profileImage:"",
+
+kycStatus:"pending",
+
+biometricEnabled:false,
+
+createdAt:new Date()
+
+};
+
+
+await userRef.set(user);
+
+
+return user;
+
+},
+
+
+
+async findByPhone(phone){
+
+
+const snapshot =
+await usersCollection
+.where("phone","==",phone)
+.limit(1)
+.get();
+
+
+
+if(snapshot.empty){
+
+return null;
+
 }
 
-module.exports = new User();
+
+return snapshot.docs[0].data();
+
+
+},
+
+
+
+async findById(id){
+
+
+const doc =
+await usersCollection.doc(id).get();
+
+
+
+if(!doc.exists){
+
+return null;
+
+}
+
+
+return doc.data();
+
+
+}
+
+
+
+};
+
+
+
+module.exports = User;
