@@ -1,48 +1,114 @@
-const OTP = require("../../models/OTP");
+const otpRepository =
+require("../../repositories/otpRepository");
 
 
-function generateOTP(){
+const generateOTP = require("./generateOTP");
 
-return Math.floor(
-100000 + Math.random()*900000
+
+
+exports.createOTP = async(phone)=>{
+
+
+const code =
+generateOTP.generateOTP();
+
+
+
+const otpData={
+
+
+phone,
+
+code,
+
+
+used:false,
+
+
+createdAt:new Date(),
+
+
+expireAt:
+new Date(
+Date.now()+5*60*1000
 )
-.toString();
 
-}
-
-
-
-const otpService={
+};
 
 
 
-async sendOTP(phone){
-
-
-const otp=generateOTP();
-
-
-
-await OTP.create(phone,otp);
+await otpRepository.saveOTP(
+otpData
+);
 
 
 
 console.log(
 "SierraPay OTP:",
-otp
+code
 );
 
 
 
-return otp;
-
-
-}
-
+return code;
 
 
 };
 
 
 
-module.exports=otpService;
+exports.verifyOTP =
+async(phone,code)=>{
+
+
+const otp =
+await otpRepository.findOTP(phone);
+
+
+
+if(!otp){
+
+throw new Error(
+"OTP not found"
+);
+
+}
+
+
+
+if(otp.code !== code){
+
+throw new Error(
+"Invalid OTP"
+);
+
+}
+
+
+
+if(
+new Date() >
+otp.expireAt
+){
+
+throw new Error(
+"OTP expired"
+);
+
+}
+
+
+
+await otpRepository.updateOTP(
+otp.id,
+{
+used:true
+}
+);
+
+
+
+return true;
+
+
+};

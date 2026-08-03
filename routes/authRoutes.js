@@ -9,15 +9,8 @@ require("../controllers/authController");
 
 
 router.post(
-"/send-otp",
-authController.sendOTP
-);
-
-
-
-router.post(
-"/verify-otp",
-authController.verifyOTP
+"/register",
+authController.register
 );
 
 

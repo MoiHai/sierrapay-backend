@@ -1,82 +1,29 @@
-const authService =
-require("../services/auth/authService");
+const registerService =
+require("../services/auth/registerService");
 
 
 
-exports.sendOTP = async(req,res)=>{
-
-
-try{
-
-
-const {phone}=req.body;
-
-
-await authService.sendOTP(phone);
-
-
-
-res.json({
-
-message:"OTP sent successfully"
-
-});
-
-
-
-}catch(error){
-
-
-res.status(500)
-.json({
-
-message:error.message
-
-});
-
-
-}
-
-
-};
-
-
-
-
-
-
-exports.verifyOTP = async(req,res)=>{
+exports.register = async(req,res)=>{
 
 
 try{
-
-
-const {
-phone,
-otp,
-name
-}=req.body;
-
 
 
 const result =
-await authService.verifyOTP(
-phone,
-otp,
-name
+await registerService.registerUser(
+req.body
 );
 
 
 
-res.json(result);
+res.status(200).json(result);
 
 
 
 }catch(error){
 
 
-res.status(400)
-.json({
+res.status(400).json({
 
 message:error.message
 
@@ -84,7 +31,6 @@ message:error.message
 
 
 }
-
 
 
 };
