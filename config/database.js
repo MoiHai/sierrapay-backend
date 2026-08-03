@@ -3,11 +3,17 @@ const { getFirestore } = require("firebase-admin/firestore");
 const fs = require("fs");
 const path = require("path");
 
-// Read the Base64 string DIRECTLY from your firebase-base64.txt file
-const base64String = fs.readFileSync(
-    path.join(__dirname, "..", "firebase-base64.txt"), 
-    "utf8"
-).trim(); // .trim() removes any hidden newlines
+// 1. Check if we are running on Render (defined by the presence of the ENV var)
+let base64String = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+
+// 2. If NOT on Render (meaning the ENV var is missing), read the local file
+if (!base64String || base64String === "") {
+    console.log("Running locally: reading firebase-base64.txt");
+    const filePath = path.join(__dirname, "..", "firebase-base64.txt");
+    base64String = fs.readFileSync(filePath, "utf8").trim();
+} else {
+    console.log("Running on Render: using Environment Variable successfully!");
+}
 
 // Decode Base64 string back into a JSON object
 const serviceAccount = JSON.parse(
