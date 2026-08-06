@@ -1,8 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const fs = require('fs');
+const path = require('path');
 
-// Simplified import and initialization
+// Load firebase-admin
 let admin;
 try {
     admin = require('firebase-admin');
@@ -14,35 +16,47 @@ try {
 
 const initializeFirebase = () => {
     try {
+        // Check for environment variables
         if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL) {
             throw new Error('Missing required Firebase environment variables.');
         }
 
-        // The key must have actual newlines, not literal \n
-        const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-
-        // Build the service account object
+        // Create a temporary service account file
+        const tempDir = '/tmp';
+        const tempKeyPath = path.join(tempDir, 'serviceAccountKey.json');
+        
+        // Clean the private key - remove any extra quotes or whitespace
+        let privateKey = process.env.FIREBASE_PRIVATE_KEY.trim();
+        // Replace literal \n with actual newlines
+        privateKey = privateKey.replace(/\\n/g, '\n');
+        // Remove any surrounding quotes if present
+        privateKey = privateKey.replace(/^"|"$/g, '');
+        
         const serviceAccount = {
-            "type": "service_account",
-            "project_id": process.env.FIREBASE_PROJECT_ID,
-            "private_key_id": "render-deployment",
-            "private_key": privateKey,
-            "client_email": process.env.FIREBASE_CLIENT_EMAIL,
-            "client_id": "render",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL)}`,
-            "universe_domain": "googleapis.com"
+            type: "service_account",
+            project_id: process.env.FIREBASE_PROJECT_ID.trim(),
+            private_key_id: "render-deployment",
+            private_key: privateKey,
+            client_email: process.env.FIREBASE_CLIENT_EMAIL.trim(),
+            client_id: "render",
+            auth_uri: "https://accounts.google.com/o/oauth2/auth",
+            token_uri: "https://oauth2.googleapis.com/token",
+            auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+            client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL.trim())}`,
+            universe_domain: "googleapis.com"
         };
 
-        // Check if already initialized to avoid double initialization
+        // Write to temporary file
+        fs.writeFileSync(tempKeyPath, JSON.stringify(serviceAccount, null, 2));
+        console.log('📝 Temporary service account file created at:', tempKeyPath);
+
+        // Initialize Firebase using the file
         if (admin.apps.length === 0) {
             admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
+                credential: admin.credential.cert(tempKeyPath),
                 databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
             });
-            console.log('🔥 Firebase app initialized.');
+            console.log('🔥 Firebase app initialized from temporary file.');
         } else {
             console.log('🔥 Firebase app already initialized.');
         }
@@ -51,6 +65,7 @@ const initializeFirebase = () => {
         return admin.firestore();
     } catch (error) {
         console.error(`❌ Firebase initialization failed: ${error.message}`);
+        console.error('Stack:', error.stack);
         process.exit(1);
     }
 };
@@ -68,7 +83,7 @@ app.use(helmet({
 app.use(cors());
 app.use(express.json());
 
-// --- Health Check Endpoints ---
+// Health check endpoints
 app.get('/health', (req, res) => {
     res.json({
         status: 'healthy',
