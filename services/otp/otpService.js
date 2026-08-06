@@ -1,114 +1,94 @@
-const otpRepository =
-require("../../repositories/otpRepository");
+const otpRepository = require('../../repositories/otpRepository');
 
+class OTPService {
+  constructor() {
+    this.OTP_LENGTH = parseInt(process.env.OTP_LENGTH) || 6;
+    this.OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
+  }
 
-const generateOTP = require("./generateOTP");
+  generateCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 
+  generateExpiry() {
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + this.OTP_EXPIRY_MINUTES);
+    return expiry.toISOString();
+  }
 
+  async generateOTP(phoneNumber, purpose = 'login') {
+    try {
+      const code = this.generateCode();
+      const expiresAt = this.generateExpiry();
+      
+      const otpData = {
+        phoneNumber,
+        code,
+        purpose,
+        expiresAt,
+        isUsed: false,
+        attempts: 0,
+        maxAttempts: 5
+      };
+      
+      return await otpRepository.create(otpData);
+    } catch (error) {
+      throw new Error(`Failed to generate OTP: ${error.message}`);
+    }
+  }
 
-exports.createOTP = async(phone)=>{
+  async verifyOTP(phoneNumber, code, purpose = 'login') {
+    try {
+      const otp = await otpRepository.findByPhoneAndCode(phoneNumber, code);
+      
+      if (!otp) {
+        throw new Error('Invalid OTP');
+      }
+      
+      // Check if OTP is for the right purpose
+      if (otp.purpose !== purpose) {
+        throw new Error(`OTP is for ${otp.purpose}, not ${purpose}`);
+      }
+      
+      // Check if expired (using the enhanced method)
+      if (otp.isExpired()) {
+        throw new Error('OTP has expired');
+      }
+      
+      if (otp.isUsed) {
+        throw new Error('OTP has already been used');
+      }
+      
+      // Check attempts
+      if (otp.attempts >= otp.maxAttempts) {
+        throw new Error('Maximum attempts exceeded. Please request a new OTP.');
+      }
+      
+      // Mark as used
+      await otpRepository.markAsUsed(otp.id || otp.otpId);
+      
+      return { valid: true, purpose: otp.purpose };
+    } catch (error) {
+      throw new Error(`OTP verification failed: ${error.message}`);
+    }
+  }
 
+  async resendOTP(phoneNumber, purpose = 'login') {
+    try {
+      return await this.generateOTP(phoneNumber, purpose);
+    } catch (error) {
+      throw new Error(`Failed to resend OTP: ${error.message}`);
+    }
+  }
 
-const code =
-generateOTP.generateOTP();
-
-
-
-const otpData={
-
-
-phone,
-
-code,
-
-
-used:false,
-
-
-createdAt:new Date(),
-
-
-expireAt:
-new Date(
-Date.now()+5*60*1000
-)
-
-};
-
-
-
-await otpRepository.saveOTP(
-otpData
-);
-
-
-
-console.log(
-"SierraPay OTP:",
-code
-);
-
-
-
-return code;
-
-
-};
-
-
-
-exports.verifyOTP =
-async(phone,code)=>{
-
-
-const otp =
-await otpRepository.findOTP(phone);
-
-
-
-if(!otp){
-
-throw new Error(
-"OTP not found"
-);
-
+  async cleanupExpired() {
+    try {
+      const count = await otpRepository.deleteExpired();
+      return { cleaned: count };
+    } catch (error) {
+      throw new Error(`Failed to cleanup OTPs: ${error.message}`);
+    }
+  }
 }
 
-
-
-if(otp.code !== code){
-
-throw new Error(
-"Invalid OTP"
-);
-
-}
-
-
-
-if(
-new Date() >
-otp.expireAt
-){
-
-throw new Error(
-"OTP expired"
-);
-
-}
-
-
-
-await otpRepository.updateOTP(
-otp.id,
-{
-used:true
-}
-);
-
-
-
-return true;
-
-
-};
+module.exports = new OTPService();

@@ -1,127 +1,131 @@
-// User Repository - Handles User CRUD operations
-const { getDb } = require('../config/database');
+let db = null;
 
-const COLLECTION = 'users';
+const setDb = (database) => {
+  db = database;
+};
 
 class UserRepository {
-  // Create user
-  static async create(userData) {
-    const db = getDb();
-    const userRef = db.collection(COLLECTION).doc();
-    const id = userRef.id;
-    
-    await userRef.set({
-      id,
-      ...userData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-    
-    return { id, ...userData };
-  }
-  
-  // Get user by ID
-  static async findById(id) {
-    const db = getDb();
-    const doc = await db.collection(COLLECTION).doc(id).get();
-    
-    if (!doc.exists) {
-      return null;
+  constructor() {}
+
+  async create(userData) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      
+      // Ensure isActive is always true for new users
+      const user = {
+        userId: null,
+        phoneNumber: userData.phoneNumber,
+        fullName: userData.fullName || null,
+        email: userData.email || null,
+        passwordHash: userData.passwordHash || null,
+        isVerified: userData.isVerified !== undefined ? userData.isVerified : true,
+        isActive: true, // Always active on creation
+        kycStatus: userData.kycStatus || 'pending',
+        role: userData.role || 'user',
+        deviceIds: [],
+        settings: {
+          biometricEnabled: false,
+          twoFactorEnabled: false,
+          notificationsEnabled: true
+        },
+        lastLoginAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      const docRef = db.collection('users').doc();
+      user.userId = docRef.id;
+      await docRef.set(user);
+      return user;
+    } catch (error) {
+      throw new Error(`Failed to create user: ${error.message}`);
     }
-    
-    return { id: doc.id, ...doc.data() };
   }
-  
-  // Get user by phone number
-  static async findByPhone(phone) {
-    const db = getDb();
-    const snapshot = await db.collection(COLLECTION)
-      .where('phoneNumber', '==', phone)
-      .limit(1)
-      .get();
-    
-    if (snapshot.empty) {
-      return null;
+
+  async findByPhone(phoneNumber) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const snapshot = await db.collection('users')
+        .where('phoneNumber', '==', phoneNumber)
+        .limit(1)
+        .get();
+      
+      if (snapshot.empty) return null;
+      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+    } catch (error) {
+      throw new Error(`Failed to find user: ${error.message}`);
     }
-    
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
   }
-  
-  // Update user
-  static async update(id, updates) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-    
-    return this.findById(id);
+
+  async findById(userId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const doc = await db.collection('users').doc(userId).get();
+      if (!doc.exists) return null;
+      return { id: doc.id, ...doc.data() };
+    } catch (error) {
+      throw new Error(`Failed to find user: ${error.message}`);
+    }
   }
-  
-  // Delete user (soft delete)
-  static async delete(id) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      status: 'deleted',
-      deletedAt: new Date().toISOString()
-    });
+
+  async update(userId, data) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      await db.collection('users').doc(userId).update({
+        ...data,
+        updatedAt: new Date().toISOString()
+      });
+      return await this.findById(userId);
+    } catch (error) {
+      throw new Error(`Failed to update user: ${error.message}`);
+    }
   }
-  
-  // List users with pagination
-  static async list(options = {}) {
-    const db = getDb();
-    const {
-      page = 1,
-      limit = 20,
-      status = 'active'
-    } = options;
-    
-    const offset = (page - 1) * limit;
-    
-    let query = db.collection(COLLECTION)
-      .where('status', '==', status)
-      .orderBy('createdAt', 'desc')
-      .offset(offset)
-      .limit(limit);
-    
-    const snapshot = await query.get();
-    const users = [];
-    
-    snapshot.forEach(doc => {
-      users.push({ id: doc.id, ...doc.data() });
-    });
-    
-    // Get total count
-    const countQuery = await db.collection(COLLECTION)
-      .where('status', '==', status)
-      .get();
-    
-    return {
-      users,
-      pagination: {
-        page,
-        limit,
-        total: countQuery.size,
-        pages: Math.ceil(countQuery.size / limit)
+
+  async addDevice(userId, deviceId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const user = await this.findById(userId);
+      if (!user) throw new Error('User not found');
+      
+      const devices = user.deviceIds || [];
+      if (!devices.includes(deviceId)) {
+        devices.push(deviceId);
+        await db.collection('users').doc(userId).update({
+          deviceIds: devices,
+          updatedAt: new Date().toISOString()
+        });
       }
-    };
+      return user;
+    } catch (error) {
+      throw new Error(`Failed to add device: ${error.message}`);
+    }
   }
-  
-  // Check if user exists
-  static async exists(phone) {
-    const user = await this.findByPhone(phone);
-    return !!user;
+
+  async updateLastLogin(userId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      await db.collection('users').doc(userId).update({
+        lastLoginAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      throw new Error(`Failed to update last login: ${error.message}`);
+    }
   }
-  
-  // Update last login
-  static async updateLastLogin(id) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      lastLoginAt: new Date().toISOString(),
-      loginCount: admin.firestore.FieldValue.increment(1)
-    });
+
+  async reactivate(userId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      await db.collection('users').doc(userId).update({
+        isActive: true,
+        updatedAt: new Date().toISOString()
+      });
+      return await this.findById(userId);
+    } catch (error) {
+      throw new Error(`Failed to reactivate user: ${error.message}`);
+    }
   }
 }
 
-module.exports = UserRepository;
+module.exports = new UserRepository();
+module.exports.setDb = setDb;

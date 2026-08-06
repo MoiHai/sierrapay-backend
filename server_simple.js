@@ -1,34 +1,33 @@
+// Load environment variables FIRST
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 
-// Load firebase-admin
-let admin;
-try {
-    admin = require('firebase-admin');
-    console.log('✅ firebase-admin loaded successfully. Version:', admin.SDK_VERSION);
-} catch (error) {
-    console.error('❌ Failed to load firebase-admin:', error.message);
-    process.exit(1);
+console.log('🔍 Loading environment variables...');
+console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
+console.log('  FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ SET' : '❌ MISSING');
+console.log('  FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ SET' : '❌ MISSING');
+console.log('  JWT_SECRET:', process.env.JWT_SECRET ? '✅ SET' : '❌ MISSING');
+
+// Warn if JWT_SECRET is the default placeholder
+if (process.env.JWT_SECRET === 'your_super_secret_jwt_key_change_this_in_production') {
+  console.warn('⚠️  WARNING: JWT_SECRET is set to the default placeholder! Use a strong secret in production.');
 }
+
+const admin = require('firebase-admin');
+console.log('✅ firebase-admin loaded successfully. Version:', admin.SDK_VERSION);
 
 const initializeFirebase = () => {
     try {
-        // Debug: Log environment variable status
-        console.log('🔍 Checking environment variables:');
-        console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
-        console.log('  FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ SET' : '❌ MISSING');
-        console.log('  FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ SET (length: ' + process.env.FIREBASE_PRIVATE_KEY.length + ')' : '❌ MISSING');
-
         if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL) {
             throw new Error('Missing required Firebase environment variables.');
         }
 
-        // Clean the private key
         let privateKey = process.env.FIREBASE_PRIVATE_KEY;
         privateKey = privateKey.replace(/\\n/g, '\n');
         
-        // Build the service account object
         const serviceAccount = {
             type: "service_account",
             project_id: process.env.FIREBASE_PROJECT_ID.trim(),
@@ -43,27 +42,17 @@ const initializeFirebase = () => {
             universe_domain: "googleapis.com"
         };
 
-        console.log('📝 serviceAccount.private_key exists?', serviceAccount.private_key ? 'YES' : 'NO');
-        console.log('📝 serviceAccount.private_key length:', serviceAccount.private_key ? serviceAccount.private_key.length : 'undefined');
-
-        // Check if apps already initialized
         if (admin.apps.length > 0) {
             console.log('🔥 Firebase app already initialized.');
             return admin.firestore();
         }
 
-        // Initialize Firebase with the service account
-        try {
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
-                databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
-            });
-            console.log('🔥 Firebase app initialized successfully!');
-        } catch (initError) {
-            console.error('❌ Error during initializeApp:', initError.message);
-            throw initError;
-        }
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
+        });
 
+        console.log('🔥 Firebase initialized from environment variables');
         console.log(`📁 Project: ${process.env.FIREBASE_PROJECT_ID}`);
         return admin.firestore();
     } catch (error) {
@@ -73,8 +62,20 @@ const initializeFirebase = () => {
     }
 };
 
-// Initialize the database
 const db = initializeFirebase();
+
+// Set the database in all repositories
+const userRepo = require('./repositories/userRepository');
+const otpRepo = require('./repositories/otpRepository');
+const sessionRepo = require('./repositories/sessionRepository');
+const deviceRepo = require('./repositories/deviceRepository');
+
+userRepo.setDb(db);
+otpRepo.setDb(db);
+sessionRepo.setDb(db);
+deviceRepo.setDb(db);
+
+console.log('✅ Database set in all repositories');
 
 const app = express();
 
@@ -119,7 +120,31 @@ app.get('/', (req, res) => {
     });
 });
 
-// Start the server
+// Auth routes
+try {
+    const authRoutes = require('./routes/authRoutes');
+    app.use('/api/v1/auth', authRoutes);
+    console.log('✅ Auth routes loaded');
+} catch (error) {
+    console.log('⚠️ Auth routes not yet available:', error.message);
+}
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        error: 'Not Found',
+        message: `Route ${req.originalUrl} not found`
+    });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+    console.error('❌ Error:', err.message);
+    res.status(err.statusCode || 500).json({
+        error: err.message || 'Internal Server Error'
+    });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`=========================================`);
@@ -129,5 +154,6 @@ app.listen(PORT, () => {
     console.log(`📍 Port: ${PORT}`);
     console.log(`📍 Health Check: http://localhost:${PORT}/health`);
     console.log(`📍 Ready Check: http://localhost:${PORT}/health/ready`);
+    console.log(`📍 Auth Routes: http://localhost:${PORT}/api/v1/auth`);
     console.log(`=========================================`);
 });

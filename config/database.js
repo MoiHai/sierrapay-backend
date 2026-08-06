@@ -1,31 +1,38 @@
-const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
-const fs = require("fs");
-const path = require("path");
+const { db } = require('./firebase');
 
-// 1. Check if we are running on Render (defined by the presence of the ENV var)
-let base64String = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+class Database {
+  constructor() {
+    this.db = db;
+  }
 
-// 2. If NOT on Render (meaning the ENV var is missing), read the local file
-if (!base64String || base64String === "") {
-    console.log("Running locally: reading firebase-base64.txt");
-    const filePath = path.join(__dirname, "..", "firebase-base64.txt");
-    base64String = fs.readFileSync(filePath, "utf8").trim();
-} else {
-    console.log("Running on Render: using Environment Variable successfully!");
+  getConnection() {
+    return this.db;
+  }
+
+  async checkConnection() {
+    try {
+      await this.db.collection('_test').limit(1).get();
+      return { connected: true, message: 'Firestore connected successfully' };
+    } catch (error) {
+      return { connected: false, message: error.message };
+    }
+  }
+
+  async runTransaction(callback) {
+    try {
+      return await this.db.runTransaction(callback);
+    } catch (error) {
+      throw new Error(`Transaction failed: ${error.message}`);
+    }
+  }
+
+  collection(name) {
+    return this.db.collection(name);
+  }
+
+  doc(collectionName, docId) {
+    return this.db.collection(collectionName).doc(docId);
+  }
 }
 
-// Decode Base64 string back into a JSON object
-const serviceAccount = JSON.parse(
-    Buffer.from(base64String, "base64").toString("utf8")
-);
-
-initializeApp({
-    credential: cert(serviceAccount)
-});
-
-const db = getFirestore();
-
-console.log("Firebase Firestore Connected");
-
-module.exports = db;
+module.exports = new Database();

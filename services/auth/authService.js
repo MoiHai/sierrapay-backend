@@ -1,193 +1,203 @@
-const { db } = require("../../config/firebase");
-const { generateToken } = require("../../config/jwt");
-const { generateOTP } = require("../../utils/auth/generateOTP");
-const { generateWalletNumber } = require("../../utils/auth/generateWalletNumber");
-const { generateReference } = require("../../utils/auth/generateReference");
+const userRepository = require('../../repositories/userRepository');
+const sessionRepository = require('../../repositories/sessionRepository');
+const deviceRepository = require('../../repositories/deviceRepository');
+const otpService = require('../otp/otpService');
+const tokenService = require('../token/tokenService');
 
 class AuthService {
-    // Send OTP to user's phone
-    async sendOTP(phone) {
-        try {
-            const otp = generateOTP();
-            const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-            
-            console.log(`📱 Generating OTP for ${phone}: ${otp}`);
-            
-            // Store OTP in Firestore with timeout
-            const otpData = {
-                phone,
-                otp,
-                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-                verified: false,
-                createdAt: admin.firestore.Timestamp.now(),
-            };
-            
-            const docRef = await db.collection("otp_verifications").add(otpData);
-            console.log(`✅ OTP stored with ID: ${docRef.id}`);
-            
-            // In production, send SMS here
-            // For testing, log the OTP
-            console.log(`📱 OTP for ${phone}: ${otp}`);
-            
-            return { success: true, message: "OTP sent successfully" };
-        } catch (error) {
-            console.error("❌ Send OTP Error:", error);
-            throw new Error(`Failed to send OTP: ${error.message}`);
-        }
-    }
-    
-    // Verify OTP and create/authenticate user
-    async verifyOTP(phone, otp) {
-        try {
-            console.log(`🔍 Verifying OTP for ${phone}: ${otp}`);
-            
-            // Find valid OTP
-            const snapshot = await db.collection("otp_verifications")
-                .where("phone", "==", phone)
-                .where("otp", "==", otp)
-                .where("verified", "==", false)
-                .orderBy("createdAt", "desc")
-                .limit(1)
-                .get();
-            
-            if (snapshot.empty) {
-                throw new Error("Invalid or expired OTP");
-            }
-            
-            const otpDoc = snapshot.docs[0];
-            const otpData = otpDoc.data();
-            
-            // Check if expired
-            const now = new Date();
-            const expiresAt = otpData.expiresAt.toDate ? otpData.expiresAt.toDate() : new Date(otpData.expiresAt);
-            
-            if (now > expiresAt) {
-                throw new Error("OTP expired");
-            }
-            
-            // Mark as verified
-            await otpDoc.ref.update({ verified: true, verifiedAt: admin.firestore.Timestamp.now() });
-            
-            // Check if user exists
-            const userSnapshot = await db.collection("users")
-                .where("phone", "==", phone)
-                .limit(1)
-                .get();
-            
-            let user;
-            let wallet;
-            
-            if (userSnapshot.empty) {
-                // Create new user
-                console.log(`👤 Creating new user for ${phone}`);
-                const userRef = db.collection("users").doc();
-                const userId = userRef.id;
-                
-                const userData = {
-                    id: userId,
-                    phone,
-                    fullName: "",
-                    email: "",
-                    createdAt: admin.firestore.Timestamp.now(),
-                    updatedAt: admin.firestore.Timestamp.now(),
-                    hasBiometric: false,
-                    isKycVerified: false,
-                    isActive: true,
-                };
-                
-                await userRef.set(userData);
-                user = { ...userData, id: userId };
-                
-                // Create wallet
-                console.log(`💰 Creating wallet for user ${userId}`);
-                const walletRef = db.collection("wallets").doc();
-                const walletNumber = generateWalletNumber();
-                
-                const walletData = {
-                    id: walletRef.id,
-                    userId,
-                    balance: 0,
-                    currency: "SLE",
-                    walletNumber: walletNumber,
-                    createdAt: admin.firestore.Timestamp.now(),
-                    updatedAt: admin.firestore.Timestamp.now(),
-                    isActive: true,
-                };
-                
-                await walletRef.set(walletData);
-                wallet = { ...walletData, id: walletRef.id };
-                
-                console.log(`✅ User and wallet created successfully`);
-            } else {
-                // Existing user
-                console.log(`👤 Existing user found for ${phone}`);
-                const doc = userSnapshot.docs[0];
-                user = doc.data();
-                user.id = doc.id;
-                
-                // Get wallet
-                const walletSnapshot = await db.collection("wallets")
-                    .where("userId", "==", user.id)
-                    .limit(1)
-                    .get();
-                
-                if (!walletSnapshot.empty) {
-                    const walletDoc = walletSnapshot.docs[0];
-                    wallet = walletDoc.data();
-                    wallet.id = walletDoc.id;
-                } else {
-                    // Create wallet if missing
-                    console.log(`💰 Creating wallet for existing user ${user.id}`);
-                    const walletRef = db.collection("wallets").doc();
-                    const walletNumber = generateWalletNumber();
-                    
-                    const walletData = {
-                        id: walletRef.id,
-                        userId: user.id,
-                        balance: 0,
-                        currency: "SLE",
-                        walletNumber: walletNumber,
-                        createdAt: admin.firestore.Timestamp.now(),
-                        updatedAt: admin.firestore.Timestamp.now(),
-                        isActive: true,
-                    };
-                    
-                    await walletRef.set(walletData);
-                    wallet = { ...walletData, id: walletRef.id };
-                }
-            }
-            
-            // Generate JWT token
-            const token = generateToken(user.id, user.phone);
-            
-            // Return user data (without sensitive info)
-            const userData = {
-                id: user.id,
-                phone: user.phone,
-                fullName: user.fullName || "",
-                email: user.email || "",
-                hasBiometric: user.hasBiometric || false,
-                isKycVerified: user.isKycVerified || false,
-            };
-            
-            return {
-                token,
-                user: userData,
-                wallet: wallet ? {
-                    id: wallet.id,
-                    balance: wallet.balance || 0,
-                    currency: wallet.currency || "SLE",
-                    walletNumber: wallet.walletNumber,
-                } : null,
-            };
-        } catch (error) {
-            console.error("❌ Verify OTP Error:", error);
-            throw error;
-        }
-    }
-}
+  async register(phoneNumber, deviceData) {
+    try {
+      const existingUser = await userRepository.findByPhone(phoneNumber);
+      if (existingUser) {
+        throw new Error('User already exists with this phone number');
+      }
 
-// Need admin for Timestamp
-const { admin } = require("../../config/firebase");
+      await otpService.generateOTP(phoneNumber, 'registration');
+
+      return {
+        success: true,
+        message: 'OTP sent for verification',
+        requiresOTP: true
+      };
+    } catch (error) {
+      throw new Error(`Registration failed: ${error.message}`);
+    }
+  }
+
+  async verifyRegistration(phoneNumber, code, userData) {
+    try {
+      // Verify OTP with purpose 'registration'
+      const verification = await otpService.verifyOTP(phoneNumber, code, 'registration');
+      if (!verification.valid) {
+        throw new Error('Invalid registration verification');
+      }
+
+      const user = await userRepository.create({
+        phoneNumber,
+        fullName: userData.fullName,
+        email: userData.email,
+        isVerified: true
+      });
+
+      return { success: true, user };
+    } catch (error) {
+      throw new Error(`Registration verification failed: ${error.message}`);
+    }
+  }
+
+  async login(phoneNumber, code, deviceData) {
+    try {
+      const user = await userRepository.findByPhone(phoneNumber);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Verify OTP with purpose 'login'
+      const verification = await otpService.verifyOTP(phoneNumber, code, 'login');
+      if (!verification.valid) {
+        throw new Error('Invalid login verification');
+      }
+
+      const device = await deviceRepository.findOrCreate({
+        userId: user.userId,
+        deviceId: deviceData.deviceId,
+        deviceName: deviceData.deviceName,
+        deviceType: deviceData.deviceType,
+        deviceModel: deviceData.deviceModel,
+        osVersion: deviceData.osVersion,
+        appVersion: deviceData.appVersion,
+        fcmToken: deviceData.fcmToken
+      });
+
+      const { accessToken, refreshToken } = tokenService.generateTokenPair(
+        user.userId,
+        device.deviceId
+      );
+
+      const session = await sessionRepository.create({
+        userId: user.userId,
+        deviceId: device.deviceId,
+        refreshToken: refreshToken,
+        accessToken: accessToken,
+        ipAddress: deviceData.ipAddress,
+        userAgent: deviceData.userAgent
+      });
+
+      await userRepository.updateLastLogin(user.userId);
+      await deviceRepository.updateLastUsed(device.deviceId);
+      await userRepository.addDevice(user.userId, device.deviceId);
+
+      return {
+        success: true,
+        user,
+        device,
+        session,
+        accessToken,
+        refreshToken,
+        isTrusted: device.isTrusted
+      };
+    } catch (error) {
+      throw new Error(`Login failed: ${error.message}`);
+    }
+  }
+
+  async refreshToken(refreshToken, deviceId) {
+    try {
+      const session = await sessionRepository.findByRefreshToken(refreshToken);
+      if (!session) {
+        throw new Error('Invalid refresh token');
+      }
+
+      if (session.deviceId !== deviceId) {
+        throw new Error('Device mismatch');
+      }
+
+      const { accessToken, refreshToken: newRefreshToken } = tokenService.generateTokenPair(
+        session.userId,
+        deviceId
+      );
+
+      await sessionRepository.invalidate(session.sessionId);
+      
+      const newSession = await sessionRepository.create({
+        userId: session.userId,
+        deviceId: deviceId,
+        refreshToken: newRefreshToken,
+        accessToken: accessToken
+      });
+
+      return {
+        success: true,
+        accessToken,
+        refreshToken: newRefreshToken,
+        session: newSession
+      };
+    } catch (error) {
+      throw new Error(`Token refresh failed: ${error.message}`);
+    }
+  }
+
+  async logout(userId, refreshToken) {
+    try {
+      const session = await sessionRepository.findByRefreshToken(refreshToken);
+      if (session) {
+        await sessionRepository.invalidate(session.sessionId);
+        return { success: true, message: 'Logged out successfully' };
+      }
+      throw new Error('Session not found');
+    } catch (error) {
+      throw new Error(`Logout failed: ${error.message}`);
+    }
+  }
+
+  async logoutAllDevices(userId) {
+    try {
+      const count = await sessionRepository.invalidateAllForUser(userId);
+      return { 
+        success: true, 
+        message: `Logged out from ${count} devices`,
+        count
+      };
+    } catch (error) {
+      throw new Error(`Logout from all devices failed: ${error.message}`);
+    }
+  }
+
+  async trustDevice(userId, deviceId) {
+    try {
+      const device = await deviceRepository.findByDeviceId(deviceId);
+      if (!device || device.userId !== userId) {
+        throw new Error('Device not found');
+      }
+
+      await deviceRepository.updateTrusted(deviceId, true);
+      return { success: true, message: 'Device trusted successfully' };
+    } catch (error) {
+      throw new Error(`Trust device failed: ${error.message}`);
+    }
+  }
+
+  async revokeDevice(userId, deviceId) {
+    try {
+      const device = await deviceRepository.findByDeviceId(deviceId);
+      if (!device || device.userId !== userId) {
+        throw new Error('Device not found');
+      }
+
+      await deviceRepository.revoke(deviceId);
+      return { success: true, message: 'Device revoked successfully' };
+    } catch (error) {
+      throw new Error(`Revoke device failed: ${error.message}`);
+    }
+  }
+
+  async getDevices(userId) {
+    try {
+      return await deviceRepository.findActiveByUserId(userId);
+    } catch (error) {
+      throw new Error(`Failed to get devices: ${error.message}`);
+    }
+  }
+}
 
 module.exports = new AuthService();
