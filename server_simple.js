@@ -24,7 +24,7 @@ const initializeFirebase = () => {
             throw new Error('Missing required Firebase environment variables.');
         }
 
-        // Clean the private key - replace literal \n with actual newlines
+        // Clean the private key
         let privateKey = process.env.FIREBASE_PRIVATE_KEY;
         privateKey = privateKey.replace(/\\n/g, '\n');
         
@@ -46,15 +46,22 @@ const initializeFirebase = () => {
         console.log('📝 serviceAccount.private_key exists?', serviceAccount.private_key ? 'YES' : 'NO');
         console.log('📝 serviceAccount.private_key length:', serviceAccount.private_key ? serviceAccount.private_key.length : 'undefined');
 
-        // Initialize Firebase directly with the service account object
-        if (admin.apps.length === 0) {
+        // Check if apps already initialized
+        if (admin.apps.length > 0) {
+            console.log('🔥 Firebase app already initialized.');
+            return admin.firestore();
+        }
+
+        // Initialize Firebase with the service account
+        try {
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
                 databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
             });
-            console.log('🔥 Firebase app initialized directly with service account object.');
-        } else {
-            console.log('🔥 Firebase app already initialized.');
+            console.log('🔥 Firebase app initialized successfully!');
+        } catch (initError) {
+            console.error('❌ Error during initializeApp:', initError.message);
+            throw initError;
         }
 
         console.log(`📁 Project: ${process.env.FIREBASE_PROJECT_ID}`);
