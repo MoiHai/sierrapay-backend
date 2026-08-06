@@ -1,8 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const fs = require('fs');
-const path = require('path');
 
 // Load firebase-admin
 let admin;
@@ -26,14 +24,10 @@ const initializeFirebase = () => {
             throw new Error('Missing required Firebase environment variables.');
         }
 
-        // Get the private key and clean it
+        // Clean the private key - replace literal \n with actual newlines
         let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-        console.log('📝 Original private key starts with:', privateKey.substring(0, 30) + '...');
-        
-        // Replace literal \n with actual newlines
         privateKey = privateKey.replace(/\\n/g, '\n');
-        console.log('📝 After replacing \\n, starts with:', privateKey.substring(0, 30) + '...');
-
+        
         // Build the service account object
         const serviceAccount = {
             type: "service_account",
@@ -49,23 +43,16 @@ const initializeFirebase = () => {
             universe_domain: "googleapis.com"
         };
 
-        // Verify private_key is set in the object
         console.log('📝 serviceAccount.private_key exists?', serviceAccount.private_key ? 'YES' : 'NO');
         console.log('📝 serviceAccount.private_key length:', serviceAccount.private_key ? serviceAccount.private_key.length : 'undefined');
 
-        // Create temporary file
-        const tempDir = '/tmp';
-        const tempKeyPath = path.join(tempDir, 'serviceAccountKey.json');
-        fs.writeFileSync(tempKeyPath, JSON.stringify(serviceAccount, null, 2));
-        console.log('📝 Temporary file created at:', tempKeyPath);
-
-        // Initialize Firebase
+        // Initialize Firebase directly with the service account object
         if (admin.apps.length === 0) {
             admin.initializeApp({
-                credential: admin.credential.cert(tempKeyPath),
+                credential: admin.credential.cert(serviceAccount),
                 databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
             });
-            console.log('🔥 Firebase app initialized from temporary file.');
+            console.log('🔥 Firebase app initialized directly with service account object.');
         } else {
             console.log('🔥 Firebase app already initialized.');
         }
