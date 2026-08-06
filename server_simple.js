@@ -16,22 +16,25 @@ try {
 
 const initializeFirebase = () => {
     try {
-        // Check for environment variables
+        // Debug: Log environment variable status
+        console.log('🔍 Checking environment variables:');
+        console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
+        console.log('  FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ SET' : '❌ MISSING');
+        console.log('  FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ SET (length: ' + process.env.FIREBASE_PRIVATE_KEY.length + ')' : '❌ MISSING');
+
         if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL) {
             throw new Error('Missing required Firebase environment variables.');
         }
 
-        // Create a temporary service account file
-        const tempDir = '/tmp';
-        const tempKeyPath = path.join(tempDir, 'serviceAccountKey.json');
+        // Get the private key and clean it
+        let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+        console.log('📝 Original private key starts with:', privateKey.substring(0, 30) + '...');
         
-        // Clean the private key - remove any extra quotes or whitespace
-        let privateKey = process.env.FIREBASE_PRIVATE_KEY.trim();
         // Replace literal \n with actual newlines
         privateKey = privateKey.replace(/\\n/g, '\n');
-        // Remove any surrounding quotes if present
-        privateKey = privateKey.replace(/^"|"$/g, '');
-        
+        console.log('📝 After replacing \\n, starts with:', privateKey.substring(0, 30) + '...');
+
+        // Build the service account object
         const serviceAccount = {
             type: "service_account",
             project_id: process.env.FIREBASE_PROJECT_ID.trim(),
@@ -46,11 +49,17 @@ const initializeFirebase = () => {
             universe_domain: "googleapis.com"
         };
 
-        // Write to temporary file
-        fs.writeFileSync(tempKeyPath, JSON.stringify(serviceAccount, null, 2));
-        console.log('📝 Temporary service account file created at:', tempKeyPath);
+        // Verify private_key is set in the object
+        console.log('📝 serviceAccount.private_key exists?', serviceAccount.private_key ? 'YES' : 'NO');
+        console.log('📝 serviceAccount.private_key length:', serviceAccount.private_key ? serviceAccount.private_key.length : 'undefined');
 
-        // Initialize Firebase using the file
+        // Create temporary file
+        const tempDir = '/tmp';
+        const tempKeyPath = path.join(tempDir, 'serviceAccountKey.json');
+        fs.writeFileSync(tempKeyPath, JSON.stringify(serviceAccount, null, 2));
+        console.log('📝 Temporary file created at:', tempKeyPath);
+
+        // Initialize Firebase
         if (admin.apps.length === 0) {
             admin.initializeApp({
                 credential: admin.credential.cert(tempKeyPath),
