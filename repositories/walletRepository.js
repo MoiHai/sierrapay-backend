@@ -1,142 +1,166 @@
-// Wallet Repository - Handles Wallet CRUD operations
-const { getDb } = require('../config/database');
+let db = null;
 
-const COLLECTION = 'wallets';
+const setDb = (database) => {
+  db = database;
+};
 
 class WalletRepository {
-  // Create wallet
-  static async create(walletData) {
-    const db = getDb();
-    const walletRef = db.collection(COLLECTION).doc();
-    const id = walletRef.id;
-    
-    await walletRef.set({
-      id,
-      balance: 0,
-      status: 'active',
-      ...walletData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-    
-    return { id, ...walletData };
-  }
-  
-  // Get wallet by ID
-  static async findById(id) {
-    const db = getDb();
-    const doc = await db.collection(COLLECTION).doc(id).get();
-    
-    if (!doc.exists) {
-      return null;
+  constructor() {}
+
+  async create(walletData) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      
+      // Generate a unique wallet number (10 digits)
+      const walletNumber = this.generateWalletNumber();
+      
+      const wallet = {
+        userId: walletData.userId,
+        balance: walletData.balance || 0,
+        currency: walletData.currency || 'SLL',
+        walletNumber: walletNumber,
+        transactions: [],
+        isActive: true,
+        lastTransactionAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      const docRef = db.collection('wallets').doc();
+      wallet.walletId = docRef.id;
+      await docRef.set(wallet);
+      return wallet;
+    } catch (error) {
+      throw new Error(`Failed to create wallet: ${error.message}`);
     }
-    
-    return { id: doc.id, ...doc.data() };
   }
-  
-  // Get wallet by user ID
-  static async findByUserId(userId) {
-    const db = getDb();
-    const snapshot = await db.collection(COLLECTION)
-      .where('userId', '==', userId)
-      .limit(1)
-      .get();
-    
-    if (snapshot.empty) {
-      return null;
+
+  generateWalletNumber() {
+    // Generate 10-digit wallet number
+    const prefix = '80';
+    let number = '';
+    for (let i = 0; i < 8; i++) {
+      number += Math.floor(Math.random() * 10);
     }
-    
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
+    return prefix + number;
   }
-  
-  // Get wallet by wallet number
-  static async findByWalletNumber(walletNumber) {
-    const db = getDb();
-    const snapshot = await db.collection(COLLECTION)
-      .where('walletNumber', '==', walletNumber)
-      .limit(1)
-      .get();
-    
-    if (snapshot.empty) {
-      return null;
+
+  async findByUserId(userId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const snapshot = await db.collection('wallets')
+        .where('userId', '==', userId)
+        .limit(1)
+        .get();
+      
+      if (snapshot.empty) return null;
+      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+    } catch (error) {
+      throw new Error(`Failed to find wallet: ${error.message}`);
     }
-    
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
   }
-  
-  // Update wallet balance
-  static async updateBalance(id, newBalance) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      balance: newBalance,
-      updatedAt: new Date().toISOString()
-    });
-    
-    return this.findById(id);
+
+  async findById(walletId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const doc = await db.collection('wallets').doc(walletId).get();
+      if (!doc.exists) return null;
+      return { id: doc.id, ...doc.data() };
+    } catch (error) {
+      throw new Error(`Failed to find wallet: ${error.message}`);
+    }
   }
-  
-  // Update wallet
-  static async update(id, updates) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-    
-    return this.findById(id);
+
+  async updateBalance(walletId, newBalance) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      await db.collection('wallets').doc(walletId).update({
+        balance: newBalance,
+        updatedAt: new Date().toISOString()
+      });
+      return await this.findById(walletId);
+    } catch (error) {
+      throw new Error(`Failed to update balance: ${error.message}`);
+    }
   }
-  
-  // Increment balance (transaction)
-  static async incrementBalance(id, amount) {
-    const db = getDb();
-    await db.collection(COLLECTION).doc(id).update({
-      balance: admin.firestore.FieldValue.increment(amount),
-      updatedAt: new Date().toISOString()
-    });
-    
-    return this.findById(id);
+
+  async addTransaction(walletId, transactionId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      const wallet = await this.findById(walletId);
+      if (!wallet) throw new Error('Wallet not found');
+      
+      const transactions = wallet.transactions || [];
+      transactions.push(transactionId);
+      
+      await db.collection('wallets').doc(walletId).update({
+        transactions: transactions,
+        lastTransactionAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to add transaction: ${error.message}`);
+    }
   }
-  
-  // List wallets
-  static async list(options = {}) {
-    const db = getDb();
-    const {
-      page = 1,
-      limit = 20,
-      status = 'active'
-    } = options;
-    
-    const offset = (page - 1) * limit;
-    
-    let query = db.collection(COLLECTION)
-      .where('status', '==', status)
-      .orderBy('createdAt', 'desc')
-      .offset(offset)
-      .limit(limit);
-    
-    const snapshot = await query.get();
-    const wallets = [];
-    
-    snapshot.forEach(doc => {
-      wallets.push({ id: doc.id, ...doc.data() });
-    });
-    
-    const countQuery = await db.collection(COLLECTION)
-      .where('status', '==', status)
-      .get();
-    
-    return {
-      wallets,
-      pagination: {
-        page,
-        limit,
-        total: countQuery.size,
-        pages: Math.ceil(countQuery.size / limit)
+
+  async getBalance(userId) {
+    try {
+      const wallet = await this.findByUserId(userId);
+      if (!wallet) throw new Error('Wallet not found');
+      return {
+        balance: wallet.balance,
+        currency: wallet.currency,
+        walletNumber: wallet.walletNumber
+      };
+    } catch (error) {
+      throw new Error(`Failed to get balance: ${error.message}`);
+    }
+  }
+
+  async getTransactionHistory(userId, limit = 20) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      
+      // Get wallet first
+      const wallet = await this.findByUserId(userId);
+      if (!wallet) throw new Error('Wallet not found');
+      
+      const transactionIds = wallet.transactions || [];
+      const recentIds = transactionIds.slice(-limit);
+      
+      if (recentIds.length === 0) {
+        return [];
       }
-    };
+      
+      // Get transactions from Firestore
+      const transactions = [];
+      for (const id of recentIds.reverse()) {
+        const doc = await db.collection('transactions').doc(id).get();
+        if (doc.exists) {
+          transactions.push({ id: doc.id, ...doc.data() });
+        }
+      }
+      
+      return transactions;
+    } catch (error) {
+      throw new Error(`Failed to get transaction history: ${error.message}`);
+    }
+  }
+
+  async deactivateWallet(walletId) {
+    try {
+      if (!db) throw new Error('Database not initialized');
+      await db.collection('wallets').doc(walletId).update({
+        isActive: false,
+        updatedAt: new Date().toISOString()
+      });
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to deactivate wallet: ${error.message}`);
+    }
   }
 }
 
-module.exports = WalletRepository;
+module.exports = new WalletRepository();
+module.exports.setDb = setDb;

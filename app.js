@@ -82,7 +82,8 @@ app.get('/', (req, res) => {
       health: '/health',
       ready: '/health/ready',
       live: '/health/live',
-      auth: '/api/v1/auth'
+      auth: '/api/v1/auth',
+      wallet: '/api/v1/wallet'
     }
   });
 });
@@ -147,6 +148,9 @@ app.use('/uploads', express.static('uploads'));
 
 // Auth routes
 app.use('/api/v1/auth', require('./routes/authRoutes'));
+
+// Wallet routes - ADDED!
+app.use('/api/v1/wallet', require('./routes/walletRoutes'));
 
 // ============================================
 // 404 Handler

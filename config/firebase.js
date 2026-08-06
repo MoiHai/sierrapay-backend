@@ -1,67 +1,116 @@
-const admin = require("firebase-admin");
-const fs = require("fs");
-const path = require("path");
+const admin = require('firebase-admin');
 
-console.log("Initializing Firebase...");
+let db = null;
+let auth = null;
+let messaging = null;
 
-let serviceAccount;
-
-// Check for base64 encoded service account (Render production)
-if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-    try {
-        const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8");
-        serviceAccount = JSON.parse(decoded);
-        console.log("✅ Using base64 service account");
-    } catch (error) {
-        console.error("❌ Error parsing base64 service account:", error.message);
-        process.exit(1);
+const initializeFirebase = () => {
+  try {
+    // Check if Firebase is already initialized
+    if (admin.apps.length > 0) {
+      console.log('🔥 Firebase already initialized');
+      db = admin.firestore();
+      auth = admin.auth();
+      messaging = admin.messaging();
+      return;
     }
-} else {
-    // Local development - read from file
-    try {
-        const filePath = path.join(__dirname, "../firebase-base64.txt");
-        if (fs.existsSync(filePath)) {
-            const base64 = fs.readFileSync(filePath, "utf8").trim();
-            const decoded = Buffer.from(base64, "base64").toString("utf8");
-            serviceAccount = JSON.parse(decoded);
-            console.log("✅ Using firebase-base64.txt");
-        } else {
-            // Fallback to serviceAccountKey.json
-            const keyPath = path.join(__dirname, "../serviceAccountKey.json");
-            if (fs.existsSync(keyPath)) {
-                serviceAccount = require(keyPath);
-                console.log("✅ Using serviceAccountKey.json");
-            } else {
-                console.error("❌ No service account found!");
-                process.exit(1);
-            }
-        }
-    } catch (error) {
-        console.error("❌ Error reading service account:", error.message);
-        process.exit(1);
-    }
-}
 
-// Initialize Firebase with proper settings
-try {
-    admin.initializeApp({
+    // Use environment variables for service account
+    if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL) {
+      
+      // Clean the private key
+      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      privateKey = privateKey.replace(/\\n/g, '\n');
+      
+      const serviceAccount = {
+        type: "service_account",
+        project_id: process.env.FIREBASE_PROJECT_ID.trim(),
+        private_key_id: "render-deployment",
+        private_key: privateKey,
+        client_email: process.env.FIREBASE_CLIENT_EMAIL.trim(),
+        client_id: "render",
+        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
+        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+        client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.FIREBASE_CLIENT_EMAIL.trim())}`,
+        universe_domain: "googleapis.com"
+      };
+
+      admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id,
-    });
-    console.log("✅ Firebase initialized successfully");
-} catch (error) {
-    console.error("❌ Failed to initialize Firebase:", error.message);
-    process.exit(1);
-}
+        databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
+      });
+      
+      console.log('🔥 Firebase initialized from environment variables');
+      console.log(`📁 Project: ${process.env.FIREBASE_PROJECT_ID}`);
+    } else {
+      // Fallback: Try to load from file
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const serviceAccountPath = path.join(__dirname, '..', 'credentials', 'serviceAccountKey.json');
+        
+        if (fs.existsSync(serviceAccountPath)) {
+          const serviceAccount = require(serviceAccountPath);
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
+          });
+          console.log('🔥 Firebase initialized from file');
+          console.log(`📁 Project: ${serviceAccount.project_id}`);
+        } else {
+          throw new Error('No Firebase credentials found. Set environment variables or provide service account file.');
+        }
+      } catch (fileError) {
+        throw new Error(`No Firebase credentials found: ${fileError.message}`);
+      }
+    }
 
-const db = admin.firestore();
+    // Initialize services
+    db = admin.firestore();
+    auth = admin.auth();
+    messaging = admin.messaging();
+    
+    console.log('✅ Firebase services ready');
+  } catch (error) {
+    console.error(`❌ Firebase initialization failed: ${error.message}`);
+    throw error;
+  }
+};
 
-// Set Firestore settings for better performance
-db.settings({
-    ignoreUndefinedProperties: true,
-    timestampsInSnapshots: true,
-});
+const getFirestore = () => {
+  if (!db) throw new Error('Firestore not initialized');
+  return db;
+};
 
-console.log("✅ Firestore database ready");
+const getAuth = () => {
+  if (!auth) throw new Error('Auth not initialized');
+  return auth;
+};
 
-module.exports = { admin, db };
+const getMessaging = () => {
+  if (!messaging) throw new Error('Messaging not initialized');
+  return messaging;
+};
+
+const checkFirebaseHealth = async () => {
+  try {
+    if (!db) return { connected: false, message: 'Firestore not initialized' };
+    await db.collection('_health_check').doc('test').set({ timestamp: new Date().toISOString() });
+    await db.collection('_health_check').doc('test').delete();
+    return { connected: true, message: 'Firebase connection healthy' };
+  } catch (error) {
+    return { connected: false, message: error.message };
+  }
+};
+
+module.exports = {
+  initializeFirebase,
+  getFirestore,
+  getAuth,
+  getMessaging,
+  checkFirebaseHealth,
+  db,
+  auth,
+  messaging
+};

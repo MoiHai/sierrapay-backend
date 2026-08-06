@@ -4,8 +4,8 @@ const setDb = (database) => {
   db = database;
 };
 
-// Retry helper function
-const retry = async (fn, retries = 3, delay = 1000) => {
+// Simple retry helper
+const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
     try {
@@ -14,7 +14,7 @@ const retry = async (fn, retries = 3, delay = 1000) => {
       lastError = error;
       console.log(`Retry ${i + 1}/${retries} failed: ${error.message}`);
       if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
@@ -43,6 +43,7 @@ class OTPRepository {
         return this._enhanceOtp(data);
       });
     } catch (error) {
+      console.error('❌ OTP create error:', error.message);
       throw new Error(`Failed to create OTP: ${error.message}`);
     }
   }
@@ -64,54 +65,54 @@ class OTPRepository {
       if (!db) throw new Error('Database not initialized');
       
       return await retry(async () => {
-        // Get all recent OTPs for this phone number
-        const snapshot = await db.collection('otp')
-          .where('phoneNumber', '==', phoneNumber)
-          .orderBy('createdAt', 'desc')
-          .limit(10)
-          .get();
-        
-        if (snapshot.empty) return null;
-        
-        // Find the matching code that is not used and not expired
-        const now = new Date();
-        for (const doc of snapshot.docs) {
-          const data = doc.data();
-          if (data.code === code && 
-              !data.isUsed && 
-              new Date(data.expiresAt) > now) {
-            return this._enhanceOtp({ id: doc.id, ...data });
+        // Try with orderBy first
+        try {
+          const snapshot = await db.collection('otp')
+            .where('phoneNumber', '==', phoneNumber)
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+          
+          if (snapshot.empty) return null;
+          
+          const now = new Date();
+          for (const doc of snapshot.docs) {
+            const data = doc.data();
+            if (data.code === code && 
+                !data.isUsed && 
+                new Date(data.expiresAt) > now) {
+              return this._enhanceOtp({ id: doc.id, ...data });
+            }
           }
+          return null;
+        } catch (indexError) {
+          // Fallback: query without orderBy
+          console.log('⚠️ Index not ready, using fallback query');
+          const snapshot = await db.collection('otp')
+            .where('phoneNumber', '==', phoneNumber)
+            .get();
+          
+          if (snapshot.empty) return null;
+          
+          const now = new Date();
+          const docs = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 10);
+          
+          for (const data of docs) {
+            if (data.code === code && 
+                !data.isUsed && 
+                new Date(data.expiresAt) > now) {
+              return this._enhanceOtp(data);
+            }
+          }
+          return null;
         }
-        
-        return null;
       });
     } catch (error) {
-      // Fallback: try without orderBy if index not ready
-      try {
-        const snapshot = await db.collection('otp')
-          .where('phoneNumber', '==', phoneNumber)
-          .get();
-        
-        if (snapshot.empty) return null;
-        
-        const now = new Date();
-        const docs = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-          .slice(0, 10);
-        
-        for (const data of docs) {
-          if (data.code === code && 
-              !data.isUsed && 
-              new Date(data.expiresAt) > now) {
-            return this._enhanceOtp(data);
-          }
-        }
-        return null;
-      } catch (fallbackError) {
-        throw new Error(`Failed to find OTP: ${fallbackError.message}`);
-      }
+      console.error('❌ OTP find error:', error.message);
+      throw new Error(`Failed to find OTP: ${error.message}`);
     }
   }
 
@@ -125,6 +126,7 @@ class OTPRepository {
         });
       });
     } catch (error) {
+      console.error('❌ OTP mark used error:', error.message);
       throw new Error(`Failed to mark OTP as used: ${error.message}`);
     }
   }
@@ -135,7 +137,6 @@ class OTPRepository {
       return await retry(async () => {
         const doc = await db.collection('otp').doc(otpId).get();
         if (!doc.exists) throw new Error('OTP not found');
-        
         const data = doc.data();
         const attempts = (data.attempts || 0) + 1;
         await db.collection('otp').doc(otpId).update({
@@ -145,6 +146,7 @@ class OTPRepository {
         return attempts;
       });
     } catch (error) {
+      console.error('❌ OTP increment error:', error.message);
       throw new Error(`Failed to increment attempts: ${error.message}`);
     }
   }
@@ -157,13 +159,13 @@ class OTPRepository {
         const snapshot = await db.collection('otp')
           .where('expiresAt', '<', now)
           .get();
-        
         const batch = db.batch();
         snapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
         return snapshot.size;
       });
     } catch (error) {
+      console.error('❌ OTP delete expired error:', error.message);
       throw new Error(`Failed to delete expired OTPs: ${error.message}`);
     }
   }

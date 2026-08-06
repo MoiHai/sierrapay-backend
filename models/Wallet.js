@@ -1,52 +1,39 @@
-const db = require("../config/database");
+/**
+ * Wallet Model - Firestore Schema
+ * Collection: wallets
+ */
+class Wallet {
+  constructor(data) {
+    this.walletId = data.walletId || null;
+    this.userId = data.userId || null;
+    this.balance = data.balance || 0;
+    this.currency = data.currency || 'SLL';
+    this.walletNumber = data.walletNumber || null;
+    this.transactions = data.transactions || [];
+    this.isActive = data.isActive !== undefined ? data.isActive : true;
+    this.lastTransactionAt = data.lastTransactionAt || null;
+    this.createdAt = data.createdAt || new Date().toISOString();
+    this.updatedAt = data.updatedAt || new Date().toISOString();
+  }
 
-const walletsCollection = db.collection("wallets");
+  toFirestore() {
+    return {
+      userId: this.userId,
+      balance: this.balance,
+      currency: this.currency,
+      walletNumber: this.walletNumber,
+      transactions: this.transactions,
+      isActive: this.isActive,
+      lastTransactionAt: this.lastTransactionAt,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt
+    };
+  }
 
-const Wallet = {
-
-    async create(userId) {
-
-        const walletRef = walletsCollection.doc();
-
-        const wallet = {
-
-            id: walletRef.id,
-
-            userId,
-
-            balance: 0,
-
-            currency: "SLE",
-
-            status: "active",
-
-            createdAt: new Date()
-
-        };
-
-        await walletRef.set(wallet);
-
-        return wallet;
-
-    },
-
-    async findByUserId(userId) {
-
-        const snapshot = await walletsCollection
-            .where("userId", "==", userId)
-            .limit(1)
-            .get();
-
-        if (snapshot.empty) {
-
-            return null;
-
-        }
-
-        return snapshot.docs[0].data();
-
-    }
-
-};
+  static fromFirestore(doc) {
+    const data = doc.data();
+    return new Wallet({ ...data, walletId: doc.id });
+  }
+}
 
 module.exports = Wallet;
