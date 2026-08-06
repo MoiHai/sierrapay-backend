@@ -2,22 +2,66 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
-const path = require('path');
-const fs = require('fs');
 
-// Load Firebase credentials
-const serviceAccountPath = path.join(__dirname, 'credentials', 'serviceAccountKey.json');
-const serviceAccount = require(serviceAccountPath);
+// Initialize Firebase from environment variables
+const initializeFirebase = () => {
+  try {
+    // Check if we have the service account as environment variable
+    if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL) {
+      const serviceAccount = {
+        type: "service_account",
+        project_id: process.env.FIREBASE_PROJECT_ID,
+        private_key_id: "render-deployment",
+        private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        client_id: "render",
+        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
+        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+        client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${process.env.FIREBASE_CLIENT_EMAIL}`,
+        universe_domain: "googleapis.com"
+      };
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
+      });
+      
+      console.log('🔥 Firebase initialized from environment variables');
+      console.log(`📁 Project: ${process.env.FIREBASE_PROJECT_ID}`);
+      return admin.firestore();
+    }
+    
+    // Fallback: Try to load from file (local development)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const serviceAccountPath = path.join(__dirname, 'credentials', 'serviceAccountKey.json');
+      
+      if (fs.existsSync(serviceAccountPath)) {
+        const serviceAccount = require(serviceAccountPath);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
+        });
+        console.log('🔥 Firebase initialized from file');
+        console.log(`📁 Project: ${serviceAccount.project_id}`);
+        return admin.firestore();
+      }
+    } catch (fileError) {
+      console.log('⚠️ No service account file found, checking environment variables...');
+    }
+    
+    throw new Error('No Firebase credentials found. Set FIREBASE_PRIVATE_KEY, FIREBASE_PROJECT_ID, and FIREBASE_CLIENT_EMAIL environment variables.');
+    
+  } catch (error) {
+    console.error(`❌ Firebase initialization failed: ${error.message}`);
+    process.exit(1);
+  }
+};
 
 // Initialize Firebase
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
-});
-
-const db = admin.firestore();
-console.log('🔥 Firebase initialized successfully');
-console.log(`📁 Project: ${serviceAccount.project_id}`);
+const db = initializeFirebase();
 
 const app = express();
 
@@ -68,5 +112,6 @@ app.listen(PORT, () => {
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`📍 Health Check: http://localhost:${PORT}/health`);
+  console.log(`📍 Ready Check: http://localhost:${PORT}/health/ready`);
   console.log(`=========================================`);
 });
