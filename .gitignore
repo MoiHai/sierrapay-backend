@@ -16,3 +16,7 @@ uploads/
 firebase-base64.txt
 .env
 node_modules/
+credentials/
+*.key
+*.pem
+*.json

@@ -1,0 +1,1 @@
+const healthDetails = async (req, res, next) =
