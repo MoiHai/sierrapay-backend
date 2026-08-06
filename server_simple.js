@@ -2,17 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 
-// Use createRequire to reliably import firebase-admin
-const { createRequire } = require('module');
-const requireModule = createRequire(import.meta.url);
+// Standard require for firebase-admin
 let admin;
-
 try {
-    admin = requireModule('firebase-admin');
-    console.log('✅ firebase-admin module loaded successfully.');
+  admin = require('firebase-admin');
+  console.log('✅ firebase-admin loaded successfully');
 } catch (error) {
-    console.error('❌ Failed to load firebase-admin:', error.message);
-    process.exit(1);
+  console.error('❌ Failed to load firebase-admin:', error.message);
+  process.exit(1);
 }
 
 // Initialize Firebase from environment variables
