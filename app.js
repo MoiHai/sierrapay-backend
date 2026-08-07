@@ -149,6 +149,12 @@ app.use('/uploads', express.static('uploads'));
 // Auth routes
 
 // User routes
+
+// KYC routes
+
+// Security routes
+app.use('/api/v1/security', require('./routes/securityRoutes'));
+app.use('/api/v1/kyc', require('./routes/kycRoutes'));
 app.use('/api/v1/users', require('./routes/userRoutes'));
 app.use('/api/v1/auth', require('./routes/authRoutes'));
 

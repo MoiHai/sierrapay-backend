@@ -28,6 +28,7 @@ const transactionRepo = require('./repositories/transactionRepository');
 const qrRepo = require('./repositories/qrRepository');
 const billRepo = require('./repositories/billRepository');
 const notificationRepo = require('./repositories/notificationRepository');
+const kycRepo = require('./repositories/kycRepository');
 
 userRepo.setDb(db);
 otpRepo.setDb(db);
@@ -38,6 +39,7 @@ transactionRepo.setDb(db);
 qrRepo.setDb(db);
 billRepo.setDb(db);
 notificationRepo.setDb(db);
+kycRepo.setDb(db);
 
 console.log('✅ Database set in all repositories');
 
@@ -57,5 +59,7 @@ app.listen(PORT, () => {
     console.log(`📍 QR Routes: http://localhost:${PORT}/api/v1/qr`);
     console.log(`📍 Bill Routes: http://localhost:${PORT}/api/v1/bills`);
     console.log(`📍 Notification Routes: http://localhost:${PORT}/api/v1/notifications`);
+    console.log(`📍 User Routes: http://localhost:${PORT}/api/v1/users`);
+    console.log(`📍 KYC Routes: http://localhost:${PORT}/api/v1/kyc`);
     console.log(`=========================================`);
 });

@@ -1,28 +1,50 @@
-// KYC Routes
 const express = require('express');
 const router = express.Router();
-const KYCController = require('../controllers/kycController');
-const authMiddleware = require('../middleware/authMiddleware');
-const { adminMiddleware } = require('../middleware/adminMiddleware');
+const kycController = require('../controllers/kycController');
+const { authMiddleware } = require('../middleware/authMiddleware');
 
+// All KYC routes require authentication
 router.use(authMiddleware);
 
-// Submit KYC
-router.post('/submit', KYCController.submit);
+// ============================================
+// USER KYC ENDPOINTS
+// ============================================
+
+// Submit KYC application
+router.post('/submit', kycController.submitKYC.bind(kycController));
 
 // Get KYC status
-router.get('/status', KYCController.getStatus);
+router.get('/status', kycController.getKYCStatus.bind(kycController));
 
-// Admin only routes
-router.use(adminMiddleware);
+// Get full KYC details
+router.get('/', kycController.getKYC.bind(kycController));
 
-// Get all KYC submissions
-router.get('/all', KYCController.getAll);
+// Upload ID document
+router.post('/upload/id', kycController.uploadID.bind(kycController));
 
-// Verify KYC
-router.put('/:id/verify', KYCController.verify);
+// Upload selfie
+router.post('/upload/selfie', kycController.uploadSelfie.bind(kycController));
 
-// Reject KYC
-router.put('/:id/reject', KYCController.reject);
+// Upload proof of address
+router.post('/upload/proof', kycController.uploadProofOfAddress.bind(kycController));
+
+// Resubmit KYC
+router.post('/resubmit', kycController.resubmitKYC.bind(kycController));
+
+// ============================================
+// ADMIN KYC ENDPOINTS
+// ============================================
+
+// Get all KYC submissions (Admin)
+router.get('/admin/all', kycController.getAllKYC.bind(kycController));
+
+// Get KYC stats (Admin)
+router.get('/admin/stats', kycController.getStats.bind(kycController));
+
+// Verify KYC (Admin)
+router.put('/admin/:kycId/verify', kycController.verifyKYC.bind(kycController));
+
+// Reject KYC (Admin)
+router.put('/admin/:kycId/reject', kycController.rejectKYC.bind(kycController));
 
 module.exports = router;
