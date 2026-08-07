@@ -150,6 +150,18 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/v1/auth', require('./routes/authRoutes'));
 
 // Wallet routes - ADDED!
+
+// Transaction routes
+
+// QR routes
+
+// Bill routes
+
+// Notification routes
+app.use('/api/v1/notifications', require('./routes/notificationRoutes'));
+app.use('/api/v1/bills', require('./routes/billRoutes'));
+app.use('/api/v1/qr', require('./routes/qrRoutes'));
+app.use('/api/v1/transactions', require('./routes/transactionRoutes'));
 app.use('/api/v1/wallet', require('./routes/walletRoutes'));
 
 // ============================================

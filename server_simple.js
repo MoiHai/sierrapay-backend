@@ -24,12 +24,20 @@ const otpRepo = require('./repositories/otpRepository');
 const sessionRepo = require('./repositories/sessionRepository');
 const deviceRepo = require('./repositories/deviceRepository');
 const walletRepo = require('./repositories/walletRepository');
+const transactionRepo = require('./repositories/transactionRepository');
+const qrRepo = require('./repositories/qrRepository');
+const billRepo = require('./repositories/billRepository');
+const notificationRepo = require('./repositories/notificationRepository');
 
 userRepo.setDb(db);
 otpRepo.setDb(db);
 sessionRepo.setDb(db);
 deviceRepo.setDb(db);
 walletRepo.setDb(db);
+transactionRepo.setDb(db);
+qrRepo.setDb(db);
+billRepo.setDb(db);
+notificationRepo.setDb(db);
 
 console.log('✅ Database set in all repositories');
 
@@ -45,5 +53,9 @@ app.listen(PORT, () => {
     console.log(`📍 Ready Check: http://localhost:${PORT}/health/ready`);
     console.log(`📍 Auth Routes: http://localhost:${PORT}/api/v1/auth`);
     console.log(`📍 Wallet Routes: http://localhost:${PORT}/api/v1/wallet`);
+    console.log(`📍 Transaction Routes: http://localhost:${PORT}/api/v1/transactions`);
+    console.log(`📍 QR Routes: http://localhost:${PORT}/api/v1/qr`);
+    console.log(`📍 Bill Routes: http://localhost:${PORT}/api/v1/bills`);
+    console.log(`📍 Notification Routes: http://localhost:${PORT}/api/v1/notifications`);
     console.log(`=========================================`);
 });
